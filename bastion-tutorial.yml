@@ -1,0 +1,399 @@
+Resources:
+  BastionNode:
+    Type: AWS::EC2::Instance
+    Properties:
+      Tags:
+        - Key: Name
+          Value: bastion
+      ImageId: ami-a3f35bb5
+      InstanceType: t2.micro
+      SubnetId:
+        Ref: BastionSubnet
+      AvailabilityZone: us-east-1a
+      KeyName: aws-play
+      SecurityGroupIds:
+        - Ref: BastionSecurityGroup
+    DependsOn:
+      - BastionSecurityGroup
+      - BastionSubnet
+
+  BastionSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.5.0.0/24
+      VpcId:
+        Ref: BastionVPC
+      AvailabilityZone: us-east-1a
+    DependsOn: BastionVPC
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for Bastion node
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          IpProtocol: TCP
+          ToPort: 22
+      VpcId:
+        Ref: BastionVPC
+    DependsOn: BastionVPC
+
+  BastionVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.5.0.0/16
+
+  BastionInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  BastionInternetGatewayAssociation:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: BastionInternetGateway
+      VpcId:
+        Ref: BastionVPC
+    DependsOn:
+      - BastionInternetGateway
+      - BastionVPC
+
+  BastionElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId:
+        Ref: BastionNode
+    DependsOn: BastionNode
+
+  BastionEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      EIP:
+        Ref: BastionElasticIp
+      InstanceId:
+        Ref: BastionNode
+    DependsOn: BastionElasticIp
+
+  BastionRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: BastionVPC
+    DependsOn: BastionVPC
+
+  BastionRouteToInternet:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: BastionInternetGateway
+      RouteTableId:
+        Ref: BastionRouteTable
+    DependsOn:
+      - BastionRouteTable
+      - BastionInternetGateway
+
+  BastionRouteToPrivateNode:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 10.6.0.0/24
+      GatewayId:
+        Ref: PrivatePeeringConnection
+      RouteTableId:
+        Ref: BastionRouteTable
+    DependsOn:
+      - BastionRouteTable
+      - PrivatePeeringConnection
+
+  BastionRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: BastionRouteTable
+      SubnetId:
+        Ref: BastionSubnet
+    DependsOn:
+      - BastionRouteTable
+      - BastionSubnet
+  
+  PrivateNode:
+    Type: AWS::EC2::Instance
+    Properties:
+      Tags:
+        - Key: Name
+          Value: private-node
+      ImageId: ami-a3f35bb5
+      InstanceType: t2.micro
+      SubnetId:
+        Ref: PrivateSubnet
+      AvailabilityZone: us-east-1a
+      KeyName: aws-play
+      SecurityGroupIds:
+        - Ref: PrivateSecurityGroup
+    DependsOn:
+      - PrivateSecurityGroup
+      - PrivateSubnet
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.6.0.0/24
+      VpcId:
+        Ref: PrivateVPC
+      AvailabilityZone: us-east-1a
+    DependsOn: PrivateVPC
+
+  PrivateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for private clusters
+      SecurityGroupIngress:
+        - CidrIp: 10.5.0.0/24
+          FromPort: 22
+          IpProtocol: TCP
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 80
+          IpProtocol: TCP
+          ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          FromPort: 443
+          IpProtocol: TCP
+          ToPort: 443
+      VpcId:
+        Ref: PrivateVPC
+    DependsOn: PrivateVPC
+
+  PrivateVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.6.0.0/16
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: PrivateVPC
+    DependsOn: PrivateVPC
+
+  PrivateRouteForInternet:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: NatGateway
+      RouteTableId:
+        Ref: PrivateRouteTable
+    DependsOn:
+      - PrivateRouteTable
+      - NatGateway
+
+  PrivateRouteToBastion:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 10.5.0.0/24
+      GatewayId:
+        Ref: PrivatePeeringConnection
+      RouteTableId:
+        Ref: PrivateRouteTable
+    DependsOn:
+      - PrivateRouteTable
+      - PrivatePeeringConnection
+
+  PrivateRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PrivateRouteTable
+      SubnetId:
+        Ref: PrivateSubnet
+    DependsOn:
+      - PrivateRouteTable
+      - PrivateSubnet
+
+  PrivatePeeringConnection:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      PeerVpcId:
+        Ref: PrivateVPC
+      VpcId:
+        Ref: BastionVPC
+    DependsOn:
+      - PrivateVPC
+      - BastionVPC
+
+  PrivateNetworkACL:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      Tags:
+        - Key: Name
+          Value: private-acl
+      VpcId:
+        Ref: PrivateVPC
+
+  PrivateNetworkACLEntryForHTTP:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId:
+        Ref: PrivateNetworkACL
+      Protocol: 6
+      PortRange:
+        From: 80
+        To: 80
+      RuleAction: allow
+      RuleNumber: 100
+
+  PrivateNetworkACLEntryForHTTPS:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId:
+        Ref: PrivateNetworkACL
+      Protocol: 6
+      PortRange:
+        From: 443
+        To: 443
+      RuleAction: allow
+      RuleNumber: 110
+
+  PrivateNetworkACLEntryForSSH:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 10.5.0.0/24
+      NetworkAclId:
+        Ref: PrivateNetworkACL
+      Protocol: 6
+      PortRange:
+        From: 22
+        To: 22
+      RuleAction: allow
+      RuleNumber: 120
+
+  PrivateNetworkACLEntryForEphemeralConnections:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId:
+        Ref: PrivateNetworkACL
+      Protocol: 6
+      PortRange:
+        From: 1024
+        To: 65535
+      RuleAction: allow
+      RuleNumber: 130
+
+  PrivateNetworkACLEntryForHTTPOutbound:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId:
+        Ref: PrivateNetworkACL
+      Egress: true
+      Protocol: 6
+      PortRange:
+        From: 80
+        To: 80
+      RuleAction: allow
+      RuleNumber: 100
+
+  PrivateNetworkACLEntryForHTTPSOutbound:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId:
+        Ref: PrivateNetworkACL
+      Egress: true
+      Protocol: 6
+      PortRange:
+        From: 443
+        To: 443
+      RuleAction: allow
+      RuleNumber: 110
+
+  PrivateNetworkACLEntryForSSHOutbound:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 10.5.0.0/24
+      NetworkAclId:
+        Ref: PrivateNetworkACL
+      Egress: true
+      Protocol: 6
+      PortRange:
+        From: 22
+        To: 22
+      RuleAction: allow
+      RuleNumber: 120
+
+  PrivateNetworkACLEntryForEphemeralPortsOutbound:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId:
+        Ref: PrivateNetworkACL
+      Egress: true
+      Protocol: 6
+      PortRange:
+        From: 1024
+        To: 65535
+      RuleAction: allow
+      RuleNumber: 130
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - NatElasticIP
+          - AllocationId
+      SubnetId: 
+        Ref: NatSubnet
+    DependsOn:
+      - NatSubnet
+
+  NatElasticIP:
+    Type: AWS::EC2::EIP
+
+  NatSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.6.1.0/24
+      VpcId:
+        Ref: PrivateVPC
+      AvailabilityZone: us-east-1a
+    DependsOn: PrivateVPC
+
+  NatInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  NatInternetGatewayAssociation:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: NatInternetGateway
+      VpcId:
+        Ref: PrivateVPC
+    DependsOn:
+      - NatInternetGateway
+      - PrivateVPC
+
+  NatRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: PrivateVPC
+    DependsOn: PrivateVPC
+  
+  NatRouteToInternet:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: NatInternetGateway
+      RouteTableId:
+        Ref: NatRouteTable
+    DependsOn:
+      - NatInternetGateway
+      - NatRouteTable
+
