@@ -10,7 +10,7 @@ Resources:
       SubnetId:
         Ref: BastionSubnet
       AvailabilityZone: us-east-1a
-      KeyName: aws-play
+      KeyName: secret-key-pair1
       SecurityGroupIds:
         - Ref: BastionSecurityGroup
     DependsOn:
@@ -127,7 +127,7 @@ Resources:
       SubnetId:
         Ref: PrivateSubnet
       AvailabilityZone: us-east-1a
-      KeyName: aws-play
+      KeyName: secret-key-pair2
       SecurityGroupIds:
         - Ref: PrivateSecurityGroup
     DependsOn:
